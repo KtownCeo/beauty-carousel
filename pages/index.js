@@ -18,7 +18,7 @@ const LANGS = [
   { code: "en", label: "🇬🇧 영어", name: "영어" },
 ];
 
-async function generateContent({ text, imageBase64, slideCount, outputLangs }) {
+async function generateContent({ text, imageBase64, imageMimeType, slideCount, outputLangs }) {
   const hasImage = !!imageBase64;
   const langNames = outputLangs.map(l => LANGS.find(x => x.code === l)?.name).join(", ");
 
@@ -69,7 +69,7 @@ Make ${slideCount} slides: 1 cover, ${slideCount - 2} content slides, 1 CTA slid
 
   const userContent = hasImage
     ? [
-        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
+        { type: "image", source: { type: "base64", media_type: imageMimeType, data: imageBase64 } },
         { type: "text", text: prompt },
       ]
     : prompt;
@@ -184,6 +184,7 @@ export default function App() {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
+  const [imageMimeType, setImageMimeType] = useState("image/jpeg");
   const [slideCount, setSlideCount] = useState(5);
   const [outputLangs, setOutputLangs] = useState(["no", "ko"]);
   const [loading, setLoading] = useState(false);
@@ -195,6 +196,7 @@ export default function App() {
 
   const handleImage = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
+    setImageMimeType(file.type || "image/jpeg");
     const reader = new FileReader();
     reader.onload = (e) => {
       setImagePreview(e.target.result);
@@ -215,7 +217,7 @@ export default function App() {
     if (!text.trim() && !imageBase64) return;
     setLoading(true); setError(""); setResult(null); setCurrentSlide(0);
     try {
-      const data = await generateContent({ text, imageBase64, slideCount, outputLangs });
+      const data = await generateContent({ text, imageBase64, imageMimeType, slideCount, outputLangs });
       setResult(data);
       setPreviewLang(outputLangs[0]);
     } catch (e) {
@@ -252,7 +254,7 @@ export default function App() {
               {imagePreview ? (
                 <>
                   <img src={imagePreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  <button onClick={(e) => { e.stopPropagation(); setImagePreview(null); setImageBase64(null); }}
+                  <button onClick={(e) => { e.stopPropagation(); setImagePreview(null); setImageBase64(null); setImageMimeType("image/jpeg"); }}
                     style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.55)", border: "none", color: "#fff", fontSize: 13, cursor: "pointer" }}>×</button>
                 </>
               ) : (
