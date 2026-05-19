@@ -12,53 +12,60 @@ const C = {
   accentDark: "#9a7d5e",
 };
 
-async function generateContent({ text, imageBase64, slideCount }) {
+const LANGS = [
+  { code: "no", label: "🇳🇴 노르웨이어", name: "노르웨이어" },
+  { code: "ko", label: "🇰🇷 한국어", name: "한국어" },
+  { code: "en", label: "🇬🇧 영어", name: "영어" },
+];
+
+async function generateContent({ text, imageBase64, slideCount, outputLangs }) {
   const hasImage = !!imageBase64;
-  const prompt = `당신은 노르웨이에서 운영하는 케이뷰티 & 이너뷰티 인스타그램 계정의 콘텐츠 매니저입니다.
-${hasImage ? "업로드된 이미지를 분석하고, " : ""}아래 내용을 바탕으로 인스타그램 캐러셀 ${slideCount}장과 캡션을 생성해주세요.
+  const langNames = outputLangs.map(l => LANGS.find(x => x.code === l)?.name).join(", ");
 
-톤앤매너: 미니멀하고 세련됨, 진정성 있는 뷰티 인사이더 느낌, 친근하지만 전문적
-계정 언어: 노르웨이어 (주), 영어 해시태그 + 노르웨이어 해시태그 혼합
+  const prompt = `You are a content manager for a K-Beauty & Inner Beauty Instagram account operated in Norway.
+${hasImage ? "Analyze the uploaded image and " : ""}Based on the content below, create an Instagram carousel with ${slideCount} slides and captions.
 
-입력 내용:
-${text || "(이미지에서 내용 파악해주세요)"}
+Tone: Minimal, refined, authentic beauty insider feel, friendly but professional.
+Output languages requested: ${langNames}
 
-아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만:
+Input content:
+${text || "(Please analyze from the image)"}
+
+IMPORTANT: Respond with ONLY valid JSON. No other text, no markdown code blocks, just pure JSON.
+
 {
-  "topic": "주제 한 줄 (한국어)",
+  "topic": "One-line topic in Korean",
   "slides": [
     {
       "type": "cover",
-      "ko_title": "한국어 제목",
-      "no_title": "노르웨이어 제목",
-      "ko_sub": "한국어 부제",
-      "no_sub": "노르웨이어 부제",
-      "emoji": "이모지"
+      ${outputLangs.includes("ko") ? '"ko_title": "Korean title", "ko_sub": "Korean subtitle",' : ""}
+      ${outputLangs.includes("no") ? '"no_title": "Norwegian title", "no_sub": "Norwegian subtitle",' : ""}
+      ${outputLangs.includes("en") ? '"en_title": "English title", "en_sub": "English subtitle",' : ""}
+      "emoji": "emoji"
     },
     {
       "type": "content",
-      "ko_headline": "한국어 헤드라인",
-      "no_headline": "노르웨이어 헤드라인",
-      "ko_body": "한국어 본문 1-2문장",
-      "no_body": "노르웨이어 본문 1-2문장",
-      "emoji": "이모지"
+      ${outputLangs.includes("ko") ? '"ko_headline": "Korean headline", "ko_body": "Korean body 1-2 sentences",' : ""}
+      ${outputLangs.includes("no") ? '"no_headline": "Norwegian headline", "no_body": "Norwegian body 1-2 sentences",' : ""}
+      ${outputLangs.includes("en") ? '"en_headline": "English headline", "en_body": "English body 1-2 sentences",' : ""}
+      "emoji": "emoji"
     },
     {
       "type": "cta",
-      "ko_headline": "한국어 행동유도",
-      "no_headline": "노르웨이어 행동유도",
-      "ko_action": "한국어 액션",
-      "no_action": "노르웨이어 액션",
-      "emoji": "이모지"
+      ${outputLangs.includes("ko") ? '"ko_headline": "Korean CTA", "ko_action": "Korean action",' : ""}
+      ${outputLangs.includes("no") ? '"no_headline": "Norwegian CTA", "no_action": "Norwegian action",' : ""}
+      ${outputLangs.includes("en") ? '"en_headline": "English CTA", "en_action": "English action",' : ""}
+      "emoji": "emoji"
     }
   ],
-  "caption_no": "노르웨이어 캡션 전체 (이모지 포함, 자연스럽고 참여 유도하는 문장, 150-200자)",
-  "caption_ko": "한국어 캡션 전체 (내용 파악용, 100-150자)",
-  "hashtags_no": "#kbeauty #kskjønnhet #koreanbeauty #hudpleie #koreanskincare #indresskjønnhet #naturligskjønnhet",
-  "hashtags_en": "#kbeauty #skincare #innerbeauty #koreanskincare #beautyreview #skincareaddict #glowingskin"
+  ${outputLangs.includes("ko") ? '"caption_ko": "Korean caption (100-150 chars, with emojis)",' : ""}
+  ${outputLangs.includes("no") ? '"caption_no": "Norwegian caption (150-200 chars, with emojis, engaging)",' : ""}
+  ${outputLangs.includes("en") ? '"caption_en": "English caption (150-200 chars, with emojis, engaging)",' : ""}
+  "hashtags_no": "#kbeauty #kskjønnhet #koreanbeauty #hudpleie #koreanskincare",
+  "hashtags_en": "#kbeauty #skincare #innerbeauty #koreanskincare #glowingskin"
 }
 
-슬라이드는 cover 1장, content ${slideCount - 2}장, cta 1장으로 구성하세요.`;
+Make ${slideCount} slides: 1 cover, ${slideCount - 2} content slides, 1 CTA slide.`;
 
   const userContent = hasImage
     ? [
@@ -73,14 +80,25 @@ ${text || "(이미지에서 내용 파악해주세요)"}
     body: JSON.stringify({ messages: [{ role: "user", content: userContent }] }),
   });
 
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error("Server error: " + err);
+  }
+
   const data = await res.json();
+
+  if (data.error) throw new Error("API error: " + JSON.stringify(data.error));
+  if (!data.content || !data.content.length) throw new Error("Empty response: " + JSON.stringify(data));
+
   const raw = data.content.map((b) => b.text || "").join("");
-  const clean = raw.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean);
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first === -1 || last === -1) throw new Error("No JSON found in: " + raw.slice(0, 200));
+
+  return JSON.parse(raw.slice(first, last + 1));
 }
 
 function SlideCard({ slide, index, total, image, lang }) {
-  const isKo = lang === "ko";
   const base = {
     width: "100%", height: "100%",
     borderRadius: 18,
@@ -93,12 +111,18 @@ function SlideCard({ slide, index, total, image, lang }) {
     textAlign: "center", overflow: "hidden",
   };
 
+  const getTitle = () => slide[`${lang}_title`] || slide.ko_title || slide.no_title || slide.en_title || "";
+  const getSub = () => slide[`${lang}_sub`] || slide.ko_sub || slide.no_sub || slide.en_sub || "";
+  const getHeadline = () => slide[`${lang}_headline`] || slide.ko_headline || slide.no_headline || slide.en_headline || "";
+  const getBody = () => slide[`${lang}_body`] || slide.ko_body || slide.no_body || slide.en_body || "";
+  const getAction = () => slide[`${lang}_action`] || slide.ko_action || slide.no_action || slide.en_action || "";
+
   const counter = (
     <div style={{ position: "absolute", top: 16, right: 18, fontSize: 10, color: C.sub, letterSpacing: 2, fontFamily: "sans-serif" }}>
       {index + 1} / {total}
     </div>
   );
-  const accent = <div style={{ width: 28, height: 1.5, background: C.accent, marginBottom: 18, borderRadius: 2 }} />;
+  const accentLine = <div style={{ width: 28, height: 1.5, background: C.accent, marginBottom: 18, borderRadius: 2 }} />;
 
   if (slide.type === "cover") {
     return (
@@ -106,13 +130,9 @@ function SlideCard({ slide, index, total, image, lang }) {
         {image && <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${image})`, backgroundSize: "cover", backgroundPosition: "center", opacity: 0.12, borderRadius: 18 }} />}
         {counter}
         <div style={{ fontSize: 32, marginBottom: 14 }}>{slide.emoji}</div>
-        {accent}
-        <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.35, marginBottom: 10 }}>
-          {isKo ? slide.ko_title : slide.no_title}
-        </div>
-        <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.7, fontStyle: "italic" }}>
-          {isKo ? slide.ko_sub : slide.no_sub}
-        </div>
+        {accentLine}
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.35, marginBottom: 10 }}>{getTitle()}</div>
+        <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.7, fontStyle: "italic" }}>{getSub()}</div>
         <div style={{ position: "absolute", bottom: 16, fontSize: 10, color: C.beige2, letterSpacing: 3, fontFamily: "sans-serif" }}>← SWIPE →</div>
       </div>
     );
@@ -123,13 +143,9 @@ function SlideCard({ slide, index, total, image, lang }) {
       <div style={base}>
         {counter}
         <div style={{ fontSize: 30, marginBottom: 16 }}>{slide.emoji}</div>
-        {accent}
-        <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>
-          {isKo ? slide.ko_headline : slide.no_headline}
-        </div>
-        <div style={{ fontSize: 12, color: C.accentDark, fontFamily: "sans-serif", letterSpacing: 1.5, fontWeight: 600, textTransform: "uppercase" }}>
-          {isKo ? slide.ko_action : slide.no_action}
-        </div>
+        {accentLine}
+        <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>{getHeadline()}</div>
+        <div style={{ fontSize: 12, color: C.accentDark, fontFamily: "sans-serif", letterSpacing: 1.5, fontWeight: 600, textTransform: "uppercase" }}>{getAction()}</div>
       </div>
     );
   }
@@ -138,13 +154,9 @@ function SlideCard({ slide, index, total, image, lang }) {
     <div style={base}>
       {counter}
       <div style={{ fontSize: 28, marginBottom: 14 }}>{slide.emoji}</div>
-      {accent}
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>
-        {isKo ? slide.ko_headline : slide.no_headline}
-      </div>
-      <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.8, fontStyle: "italic" }}>
-        {isKo ? slide.ko_body : slide.no_body}
-      </div>
+      {accentLine}
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>{getHeadline()}</div>
+      <div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.8, fontStyle: "italic" }}>{getBody()}</div>
     </div>
   );
 }
@@ -173,11 +185,12 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
   const [slideCount, setSlideCount] = useState(5);
+  const [outputLangs, setOutputLangs] = useState(["no", "ko"]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [lang, setLang] = useState("no");
+  const [previewLang, setPreviewLang] = useState("no");
   const fileRef = useRef();
 
   const handleImage = useCallback((file) => {
@@ -190,19 +203,29 @@ export default function App() {
     reader.readAsDataURL(file);
   }, []);
 
+  const toggleLang = (code) => {
+    setOutputLangs(prev =>
+      prev.includes(code)
+        ? prev.length > 1 ? prev.filter(l => l !== code) : prev
+        : [...prev, code]
+    );
+  };
+
   const handleGenerate = async () => {
     if (!text.trim() && !imageBase64) return;
     setLoading(true); setError(""); setResult(null); setCurrentSlide(0);
     try {
-      const data = await generateContent({ text, imageBase64, slideCount });
+      const data = await generateContent({ text, imageBase64, slideCount, outputLangs });
       setResult(data);
+      setPreviewLang(outputLangs[0]);
     } catch (e) {
-      setError("생성 중 오류가 발생했습니다. 다시 시도해주세요.");
+      setError("오류: " + e.message);
     }
     setLoading(false);
   };
 
   const slides = result?.slides || [];
+  const availableLangs = LANGS.filter(l => outputLangs.includes(l.code));
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Georgia', serif", color: C.text }}>
@@ -211,10 +234,12 @@ export default function App() {
           <div style={{ fontSize: 10, letterSpacing: 3, color: C.sub, textTransform: "uppercase", fontFamily: "sans-serif", marginBottom: 4 }}>K-Beauty Oslo</div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>캐러셀 콘텐츠 자동화</div>
         </div>
-        <div style={{ fontSize: 11, color: C.sub, fontFamily: "sans-serif", textAlign: "right", lineHeight: 1.7 }}>한국어 + 노르웨이어<br />캐러셀 & 캡션 생성기</div>
+        <div style={{ fontSize: 11, color: C.sub, fontFamily: "sans-serif", textAlign: "right", lineHeight: 1.7 }}>케이뷰티 인스타<br />캐러셀 & 캡션 생성기</div>
       </div>
 
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px", display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* 입력 패널 */}
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "28px 26px" }}>
           <div style={{ fontSize: 10, letterSpacing: 2, color: C.sub, fontFamily: "sans-serif", textTransform: "uppercase", marginBottom: 18 }}>콘텐츠 입력</div>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -242,18 +267,52 @@ export default function App() {
               placeholder="소개할 제품, 성분, 효능, 사용법, 후기 등을 자유롭게 입력하세요.&#10;이미지만 있어도 자동 분석됩니다."
               style={{ flex: 1, minWidth: 200, height: 160, background: C.beige, border: `1px solid ${C.border}`, borderRadius: 12, color: C.text, fontSize: 13.5, lineHeight: 1.8, padding: "14px 16px", boxSizing: "border-box", resize: "none", fontFamily: "inherit", outline: "none" }} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 18, flexWrap: "wrap" }}>
+
+          {/* 언어 선택 */}
+          <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: C.sub, fontFamily: "sans-serif", textTransform: "uppercase" }}>출력 언어</div>
+            {LANGS.map((l) => (
+              <button key={l.code} onClick={() => toggleLang(l.code)} style={{
+                padding: "6px 14px", borderRadius: 20,
+                border: `1.5px solid ${outputLangs.includes(l.code) ? C.accent : C.border}`,
+                background: outputLangs.includes(l.code) ? C.accent : "transparent",
+                color: outputLangs.includes(l.code) ? "#fff" : C.sub,
+                fontSize: 12, fontFamily: "sans-serif", cursor: "pointer",
+                fontWeight: outputLangs.includes(l.code) ? 700 : 400,
+                transition: "all 0.2s",
+              }}>{l.label}</button>
+            ))}
+          </div>
+
+          {/* 슬라이드 수 + 생성 버튼 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16, flexWrap: "wrap" }}>
             <div style={{ fontSize: 10, letterSpacing: 2, color: C.sub, fontFamily: "sans-serif", textTransform: "uppercase" }}>슬라이드 수</div>
             {[3, 5, 7].map((n) => (
-              <button key={n} onClick={() => setSlideCount(n)} style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${slideCount === n ? C.accent : C.border}`, background: slideCount === n ? C.accent : "transparent", color: slideCount === n ? "#fff" : C.sub, fontSize: 12, fontFamily: "sans-serif", cursor: "pointer", fontWeight: slideCount === n ? 700 : 400 }}>{n}장</button>
+              <button key={n} onClick={() => setSlideCount(n)} style={{
+                padding: "6px 14px", borderRadius: 20,
+                border: `1px solid ${slideCount === n ? C.text : C.border}`,
+                background: slideCount === n ? C.text : "transparent",
+                color: slideCount === n ? "#fff" : C.sub,
+                fontSize: 12, fontFamily: "sans-serif", cursor: "pointer",
+                fontWeight: slideCount === n ? 700 : 400,
+              }}>{n}장</button>
             ))}
-            <button onClick={handleGenerate} disabled={loading || (!text.trim() && !imageBase64)} style={{ marginLeft: "auto", padding: "10px 28px", borderRadius: 24, border: "none", background: loading || (!text.trim() && !imageBase64) ? C.beige2 : C.accent, color: loading || (!text.trim() && !imageBase64) ? C.sub : "#fff", fontSize: 13, fontFamily: "sans-serif", fontWeight: 700, cursor: "pointer", letterSpacing: 0.5 }}>
+            <button onClick={handleGenerate} disabled={loading || (!text.trim() && !imageBase64)} style={{
+              marginLeft: "auto", padding: "10px 28px", borderRadius: 24, border: "none",
+              background: loading || (!text.trim() && !imageBase64) ? C.beige2 : C.accent,
+              color: loading || (!text.trim() && !imageBase64) ? C.sub : "#fff",
+              fontSize: 13, fontFamily: "sans-serif", fontWeight: 700, cursor: "pointer", letterSpacing: 0.5,
+            }}>
               {loading ? "⏳ 생성 중..." : "✦ 콘텐츠 생성"}
             </button>
           </div>
         </div>
 
-        {error && <div style={{ color: "#c0625a", fontSize: 13, fontFamily: "sans-serif", textAlign: "center" }}>{error}</div>}
+        {error && (
+          <div style={{ color: "#c0625a", fontSize: 12, fontFamily: "sans-serif", textAlign: "center", background: "#fff0ee", padding: "12px 16px", borderRadius: 10, border: "1px solid #f4c2c2", wordBreak: "break-all" }}>
+            {error}
+          </div>
+        )}
 
         {result && (
           <>
@@ -262,19 +321,29 @@ export default function App() {
               <div style={{ fontSize: 16, fontWeight: 700 }}>{result.topic}</div>
             </div>
 
+            {/* 언어 토글 (생성된 언어만 표시) */}
             <div style={{ display: "flex", justifyContent: "center" }}>
-              {[["no", "🇳🇴 노르웨이어"], ["ko", "🇰🇷 한국어"]].map(([l, label]) => (
-                <button key={l} onClick={() => setLang(l)} style={{ padding: "8px 22px", border: `1px solid ${C.border}`, background: lang === l ? C.text : C.surface, color: lang === l ? "#fff" : C.sub, fontSize: 12, fontFamily: "sans-serif", cursor: "pointer", fontWeight: lang === l ? 700 : 400, borderRadius: l === "no" ? "20px 0 0 20px" : "0 20px 20px 0" }}>{label}</button>
+              {availableLangs.map((l, i) => (
+                <button key={l.code} onClick={() => setPreviewLang(l.code)} style={{
+                  padding: "8px 20px",
+                  border: `1px solid ${C.border}`,
+                  background: previewLang === l.code ? C.text : C.surface,
+                  color: previewLang === l.code ? "#fff" : C.sub,
+                  fontSize: 12, fontFamily: "sans-serif", cursor: "pointer",
+                  fontWeight: previewLang === l.code ? 700 : 400,
+                  borderRadius: i === 0 ? "20px 0 0 20px" : i === availableLangs.length - 1 ? "0 20px 20px 0" : "0",
+                }}>{l.label}</button>
               ))}
             </div>
 
+            {/* 슬라이드 뷰어 */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
               <button onClick={() => setCurrentSlide((c) => Math.max(0, c - 1))} disabled={currentSlide === 0}
                 style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${C.border}`, background: C.surface, color: currentSlide === 0 ? C.border : C.text, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>‹</button>
               <div style={{ width: 320, height: 320, background: C.beige, borderRadius: 20, overflow: "hidden", position: "relative", border: `1px solid ${C.border}` }}>
                 {slides.map((slide, i) => (
                   <div key={i} style={{ position: "absolute", inset: 0, opacity: i === currentSlide ? 1 : 0, transition: "opacity 0.4s", pointerEvents: i === currentSlide ? "auto" : "none" }}>
-                    <SlideCard slide={slide} index={i} total={slides.length} image={imagePreview} lang={lang} />
+                    <SlideCard slide={slide} index={i} total={slides.length} image={imagePreview} lang={previewLang} />
                   </div>
                 ))}
               </div>
@@ -282,12 +351,14 @@ export default function App() {
                 style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${C.border}`, background: C.surface, color: currentSlide === slides.length - 1 ? C.border : C.text, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>›</button>
             </div>
 
+            {/* 도트 */}
             <div style={{ display: "flex", justifyContent: "center", gap: 7 }}>
               {slides.map((_, i) => (
                 <div key={i} onClick={() => setCurrentSlide(i)} style={{ width: i === currentSlide ? 22 : 7, height: 7, borderRadius: 4, background: i === currentSlide ? C.accent : C.beige2, cursor: "pointer", transition: "all 0.3s" }} />
               ))}
             </div>
 
+            {/* 썸네일 */}
             <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
               {slides.map((slide, i) => (
                 <div key={i} onClick={() => setCurrentSlide(i)} style={{ flexShrink: 0, width: 72, height: 72, borderRadius: 12, background: slide.type === "cta" ? C.beige : C.surface, border: `2px solid ${i === currentSlide ? C.accent : C.border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
@@ -297,14 +368,16 @@ export default function App() {
               ))}
             </div>
 
+            {/* 캡션 */}
             <div>
               <div style={{ fontSize: 10, letterSpacing: 2, color: C.sub, fontFamily: "sans-serif", textTransform: "uppercase", marginBottom: 14 }}>캡션 & 해시태그</div>
-              <CaptionBox label="🇳🇴 노르웨이어 캡션 (게시용)" caption={result.caption_no} hashtags_no={result.hashtags_no} hashtags_en={result.hashtags_en} />
-              <CaptionBox label="🇰🇷 한국어 캡션 (내용 파악용)" caption={result.caption_ko} hashtags_no={result.hashtags_no} hashtags_en={result.hashtags_en} />
+              {result.caption_no && <CaptionBox label="🇳🇴 노르웨이어 캡션 (게시용)" caption={result.caption_no} hashtags_no={result.hashtags_no} hashtags_en={result.hashtags_en} />}
+              {result.caption_en && <CaptionBox label="🇬🇧 영어 캡션" caption={result.caption_en} hashtags_no={result.hashtags_no} hashtags_en={result.hashtags_en} />}
+              {result.caption_ko && <CaptionBox label="🇰🇷 한국어 캡션 (내용 파악용)" caption={result.caption_ko} hashtags_no={result.hashtags_no} hashtags_en={result.hashtags_en} />}
             </div>
 
             <div style={{ background: C.beige, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", fontSize: 12, color: C.sub, fontFamily: "sans-serif", lineHeight: 1.8 }}>
-              💡 각 슬라이드를 스크린샷 캡처 후 인스타그램에 업로드 → 노르웨이어 캡션 복사 붙여넣기
+              💡 각 슬라이드를 스크린샷 캡처 후 인스타그램에 업로드 → 캡션 복사 붙여넣기
             </div>
           </>
         )}
